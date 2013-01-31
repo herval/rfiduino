@@ -1,6 +1,5 @@
 #include <Ethernet.h>
 #include <SPI.h>
-
 #include <SD.h>
 
 #define LED_PIN 13
@@ -22,20 +21,45 @@ class Logger {
   public:
   Logger() {
     pinMode(SD_CARD_PIN, OUTPUT);
-    // TODO open log file?
+    Serial.begin(9600);
+    delay(1000);
   }
   
-  bool info(String data) {
+  void debug(String data) {
+    // TODO v2: move to a file
+    Serial.println(data);
+  }
+  
+  void info(String data) {
     File dataFile = SD.open("log.txt", FILE_WRITE);
     // if the file is available, write to it
     if (dataFile) {
       dataFile.println(data);
       dataFile.close();
-      return true;
     } else {
-      return false;
+      debug("can't open log file!");
     }
   }
+};
+
+//-----
+
+/*
+ * Manage a list of authorized cards - currently stored on the SD
+ */
+class Authorizater {
+  public:
+  Authorizater() {
+    pinMode(SD_CARD_PIN, OUTPUT);
+    // TODO load the list into memory
+  }
+  
+  bool is_authorized(String cardNumber) {
+    return true;
+  }
+  
+  private:
+  String cards[];
 };
 
 //-----
@@ -45,11 +69,15 @@ class RfidReader {
   RfidReader() {
     byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
     byte ip[] = { 192, 168, 1, 100 };
-    byte server[] = { 192, 168, 1, 18 };
   
     Ethernet.begin(mac, ip);
     client = EthernetClient();
+  }
+  
+  void connect() {
+    byte server[] = { 192, 168, 1, 18 };
     client.connect(server, 50000);
+    delay(1000);
   }
   
   bool connected() {
@@ -77,38 +105,40 @@ class RfidReader {
   EthernetClient client;  
 };
 //-----
-//-----
 
 RfidReader *reader;
 Logger *logger;
+Authorizer *authorizer;
 
 void setup()
 {
   reader = new RfidReader();
-  logger = new Logger();
-  delay(1000);
+  logger = new Logger();  
+  authorizer = new Authorizater();
+  
+  reader->connect();
 
-  Serial.begin(9600);
-  delay(1000);
-  Serial.println("connecting...");
+  logger->debug("connecting...");
 
   if (reader->connected()) {
-    Serial.println("connected");
+    logger->debug("connected");
   } else {
-    // TODO?
-    Serial.println("connection failed");
+    logger->debug("connection failed");
   }
 }
 
 void loop()
 {
-  String c = reader.lastSwipedCard();
-  Serial.print(c);
+  if(!reader->connected()) {
+    logger->debug("Connection lost - reconnecting...");
+    reader->connect();
+  }
+  
+  String c = reader->lastSwipedCard();
   if (c != "") {  
-    logger.info(c);
-    Serial.println(c);
+    logger->info(c);
+    logger->debug(c);
     // activate the lock
     // log to log file
   }
-  Serial.print("HELLO");
 }
