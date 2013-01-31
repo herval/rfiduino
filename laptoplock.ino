@@ -79,20 +79,20 @@ class RfidReader {
 //-----
 //-----
 
-RfidReader reader;
-Logger logger;
+RfidReader *reader;
+Logger *logger;
 
 void setup()
 {
-  reader = RfidReader();
-  logger = Logger();
+  reader = new RfidReader();
+  logger = new Logger();
   delay(1000);
 
   Serial.begin(9600);
   delay(1000);
   Serial.println("connecting...");
 
-  if (reader.connected()) {
+  if (reader->connected()) {
     Serial.println("connected");
   } else {
     // TODO?
@@ -106,7 +106,9 @@ void loop()
   Serial.print(c);
   if (c != "") {  
     logger.info(c);
+    Serial.println(c);
     // activate the lock
     // log to log file
   }
+  Serial.print("HELLO");
 }
