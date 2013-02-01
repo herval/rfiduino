@@ -26,18 +26,26 @@ class Logger {
   }
   
   void debug(String data) {
-    // TODO v2: move to a file
+    write("debug.log", data);
     Serial.println(data);
   }
   
   void info(String data) {
-    File dataFile = SD.open("log.txt", FILE_WRITE);
+    if(!write("readings.log", data)) {
+      debug("can't open log file!");
+    }
+  }
+  
+  private:
+  bool write(char *file, String data) {
+    File dataFile = SD.open(file, FILE_WRITE);
     // if the file is available, write to it
     if (dataFile) {
       dataFile.println(data);
-      dataFile.close();
+      dataFile.close();  
+      return true;
     } else {
-      debug("can't open log file!");
+      return false;
     }
   }
 };
@@ -47,9 +55,9 @@ class Logger {
 /*
  * Manage a list of authorized cards - currently stored on the SD
  */
-class Authorizater {
+class Authorizer {
   public:
-  Authorizater() {
+  Authorizer() {
     pinMode(SD_CARD_PIN, OUTPUT);
     // TODO load the list into memory
   }
@@ -72,6 +80,7 @@ class RfidReader {
   
     Ethernet.begin(mac, ip);
     client = EthernetClient();
+    connect();
   }
   
   void connect() {
@@ -106,18 +115,34 @@ class RfidReader {
 };
 //-----
 
+#define LATCH_OUTPUT_PIN 13
+
+class MagneticLatch {
+  public:
+  MagneticLatch() {
+    pinMode(LATCH_OUTPUT_PIN, OUTPUT);
+    digitalWrite(LATCH_OUTPUT_PIN, LOW);
+  }
+  
+  void ping() {
+    digitalWrite(LATCH_OUTPUT_PIN, HIGH);
+  }
+};
+
+//-----
+
 RfidReader *reader;
 Logger *logger;
 Authorizer *authorizer;
+MagneticLatch *latch;
 
 void setup()
 {
   reader = new RfidReader();
   logger = new Logger();  
-  authorizer = new Authorizater();
+  authorizer = new Authorizer();
+  latch = new MagneticLatch();
   
-  reader->connect();
-
   logger->debug("connecting...");
 
   if (reader->connected()) {
@@ -138,7 +163,11 @@ void loop()
   if (c != "") {  
     logger->info(c);
     logger->debug(c);
-    // activate the lock
-    // log to log file
+    
+    if(authorizer->is_authorized(c)) {
+      latch->ping();
+      // TODO log it authorized?
+    }
+
   }
 }
