@@ -2,6 +2,9 @@
 #include <SPI.h>
 #include <SD.h>
 
+#define VALID_CARDS_FILE "cards.txt"
+#define MASTER_CARD_FILE "master.txt"
+
 #define LED_PIN 13
 
 //-----
@@ -27,16 +30,37 @@ class Logger {
   
   void debug(String data) {
     write("debug.log", data);
-    Serial.println(data);
+    Serial.println("DEBUG: " + data);
+  }
+  
+  String * readLines(char * file) {
+    File dataFile = SD.open(file, FILE_READ);
+
+    String allLines[200];
+
+    int line = 0;
+
+    int nextChar = dataFile.read();
+    String nextString = "";
+    while(nextChar != -1) {
+      if (nextChar == 13) {
+        allLines[line] = nextString;
+        line++;
+        nextString = "";
+      } 
+      nextString += nextChar;      
+    }
+      
+    return allLines;
   }
   
   void info(String data) {
+    Serial.println("INFO: "+ data);
     if(!write("readings.log", data)) {
       debug("can't open log file!");
     }
   }
   
-  private:
   bool write(char *file, String data) {
     File dataFile = SD.open(file, FILE_WRITE);
     // if the file is available, write to it
@@ -55,19 +79,52 @@ class Logger {
 /*
  * Manage a list of authorized cards - currently stored on the SD
  */
+ 
 class Authorizer {
+  bool recording;
+  String masterCard;
+  String *authorizedCards;
+  Logger *logger;
+
   public:
-  Authorizer() {
+  Authorizer(String master, String cards[], Logger *logTo) {
+    authorizedCards = cards;
+    masterCard = master;
+    logger = logTo;
+    recording = false;
+    
     pinMode(SD_CARD_PIN, OUTPUT);
     // TODO load the list into memory
   }
   
-  bool is_authorized(String cardNumber) {
-    return true;
+  bool isMaster(String card) {
+    return card == masterCard;
+  }
+  
+  void recordMode() {
+    recording = true;
+  }
+  
+  void readerMode() {
+    recording = false;
+  }
+  
+  bool isAuthorized(String cardNumber) {
+    if(recording) {
+      logger->write(VALID_CARDS_FILE, cardNumber);
+      logger->info("Recorded as valid: " + cardNumber);
+      return true;
+    };
+    
+    for(int i = 0; i < sizeof(authorizedCards); i++) {
+      if(authorizedCards[i] == cardNumber) {
+        return true;
+      }
+    }
+    return false;
   }
   
   private:
-  String cards[];
 };
 
 //-----
@@ -81,6 +138,13 @@ class RfidReader {
     Ethernet.begin(mac, ip);
     client = EthernetClient();
     connect();
+  }
+  
+  void beep() {    
+//    00 01 ff ff
+    char* command;
+    sprintf(command, "%x%x%x%x", 0x00, 0x01, 0xff, 0xff);    
+    client.write(command);
   }
   
   void connect() {
@@ -97,12 +161,19 @@ class RfidReader {
     if (client.available()) {
       String swipeData = "";
       
-      int data = client.read();
-      
-      while(data != -1) {
-        swipeData += String(data);
+      int data = client.read(); // STX
+            
+      data = client.read(); // first byte
+      while(data != -1 && data != 255 && data != 13) {
+        char hexChar[3];
+
+        itoa(data, hexChar, 16);
+        swipeData += hexChar;
+
         data = client.read();
       }
+      client.read(); // 0xa
+      client.read(); // 0x3
 
       return swipeData;
     } else {
@@ -126,6 +197,8 @@ class MagneticLatch {
   
   void ping() {
     digitalWrite(LATCH_OUTPUT_PIN, HIGH);
+    delay(3000);
+    digitalWrite(LATCH_OUTPUT_PIN, LOW);
   }
 };
 
@@ -140,7 +213,10 @@ void setup()
 {
   reader = new RfidReader();
   logger = new Logger();  
-  authorizer = new Authorizer();
+  
+  String master = logger->readLines(MASTER_CARD_FILE)[0];
+  String * validCards = logger->readLines(VALID_CARDS_FILE);
+  authorizer = new Authorizer(master, validCards, logger);
   latch = new MagneticLatch();
   
   logger->debug("connecting...");
@@ -161,12 +237,18 @@ void loop()
   
   String c = reader->lastSwipedCard();
   if (c != "") {  
-    logger->info(c);
-    logger->debug(c);
     
-    if(authorizer->is_authorized(c)) {
+    if(authorizer->isMaster(c)) {
+      authorizer->recordMode();
+    } else {
+      authorizer->readerMode();
+    }
+    
+    if(authorizer->isAuthorized(c)) {
       latch->ping();
-      // TODO log it authorized?
+      logger->info("Opened: "+ c);
+    } else {
+      logger->debug("Unauthorized: "+ c);
     }
 
   }

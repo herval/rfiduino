@@ -1,0 +1,27 @@
+The RFID-lock project
+=====================
+
+The objective of this project is to implement an RFID-activated lock. The project is divided in two parts: in this module, we include all the code that will handle communication with the RFID reader, as well as reading and storing card numbers on an SD card.
+
+In order to run, this project requires:
+
+- an Arduino (obviously)
+- an ethernet + SD shield (you can have the SD reader as a sepparate shield, as long as you update the SD_CARD_PIN constant)
+- an RFID reader - the model in use is the Elechouse NetRFID (manual included)
+- one text file on the SD card named "master.txt", with one line containing the card number of the *master* card
+
+All the functionality is divided into C++ classes (eg.: RfidReader to encapsulate all interaction with the reader, Logger to save data to the SD card, Authorizer to validate cards)
+
+HOW IT WORKS
+------------
+Every time you want to add a new card to the authorized list, all you have to do is:
+- swipe the master card. You will hear two beeps, meaning the device is now in "record" mode
+- swipe the new card. The authorized pin will fire and the card will automatically be added to the authorized cards list (cards.txt)
+
+A valid swiping will simply send a HIGH digital signal to the LATCH_OUTPUT_PIN. The idea here is that any system can be "plugged" on that end - for instance, a magnetic latch, or simply a big blinking light that will beep when a valid card is swiped.
+
+
+PENDING TASKS
+-------------
+- figure out a way to compile WITHOUT the Arduino IDE
+- write C++ tests?
