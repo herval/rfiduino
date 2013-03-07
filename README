@@ -25,3 +25,14 @@ PENDING TASKS
 -------------
 - figure out a way to compile WITHOUT the Arduino IDE
 - write C++ tests?
+
+Building
+--------
+
+Install cmake
+Install the arduino cmake toolchain
+Point ARDUINO_TOOLCHAIN to your toolchain
+
+e.g.: 
+  export ARDUINO_TOOLCHAIN=~/Documents/git/arduino-cmake/cmake/ArduinoToolchain.cmake
+
