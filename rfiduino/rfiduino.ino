@@ -3,7 +3,6 @@
 #include <SD.h>
 
 #define VALID_CARDS_FILE "cards.txt"
-#define MASTER_CARD_FILE "master.txt"
 
 #define LED_PIN 13
 
@@ -21,21 +20,21 @@
 #define SD_CARD_PIN 10
 
 class Logger {
-  public:
+public:
   Logger() {
     pinMode(SD_CARD_PIN, OUTPUT);
     Serial.begin(9600);
     delay(1000);
   }
-  
+
   void debug(String data) {
     write("debug.log", data);
     Serial.println("DEBUG: " + data);
   }
-  
+
   String * readLines(char * file) {
     File dataFile = SD.open(file, FILE_READ);
-
+    // Serial.println("DEBUG: opened ");
     String allLines[200];
 
     int line = 0;
@@ -48,19 +47,20 @@ class Logger {
         line++;
         nextString = "";
       } 
-      nextString += nextChar;      
+      nextString += nextChar;  
+      Serial.println("--- " + nextString);  
     }
-      
+    Serial.println("DONE"); 
     return allLines;
   }
-  
+
   void info(String data) {
     Serial.println("INFO: "+ data);
     if(!write("readings.log", data)) {
       debug("can't open log file!");
     }
   }
-  
+
   bool write(char *file, String data) {
     File dataFile = SD.open(file, FILE_WRITE);
     // if the file is available, write to it
@@ -68,7 +68,8 @@ class Logger {
       dataFile.println(data);
       dataFile.close();  
       return true;
-    } else {
+    } 
+    else {
       return false;
     }
   }
@@ -79,43 +80,20 @@ class Logger {
 /*
  * Manage a list of authorized cards - currently stored on the SD
  */
- 
+
 class Authorizer {
-  bool recording;
-  String masterCard;
   String *authorizedCards;
   Logger *logger;
 
-  public:
-  Authorizer(String master, String cards[], Logger *logTo) {
+public:
+  Authorizer(String cards[], Logger *logTo) {
     authorizedCards = cards;
-    masterCard = master;
     logger = logTo;
-    recording = false;
-    
+
     pinMode(SD_CARD_PIN, OUTPUT);
-    // TODO load the list into memory
   }
-  
-  bool isMaster(String card) {
-    return card == masterCard;
-  }
-  
-  void recordMode() {
-    recording = true;
-  }
-  
-  void readerMode() {
-    recording = false;
-  }
-  
+
   bool isAuthorized(String cardNumber) {
-    if(recording) {
-      logger->write(VALID_CARDS_FILE, cardNumber);
-      logger->info("Recorded as valid: " + cardNumber);
-      return true;
-    };
-    
     for(int i = 0; i < sizeof(authorizedCards); i++) {
       if(authorizedCards[i] == cardNumber) {
         return true;
@@ -123,65 +101,71 @@ class Authorizer {
     }
     return false;
   }
-  
-  private:
 };
 
 //-----
 
 class RfidReader {
-  public:
+public:
   RfidReader() {
-    byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-    byte ip[] = { 192, 168, 1, 100 };
-  
+    byte mac[] = { 
+      0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED     };
+    byte ip[] = { 
+      192, 168, 1, 100     };
+
     Ethernet.begin(mac, ip);
     client = EthernetClient();
     connect();
   }
-  
+
   void beep() {    
-//    00 01 ff ff
+    //    00 01 ff ff
     char* command;
     sprintf(command, "%x%x%x%x", 0x00, 0x01, 0xff, 0xff);    
     client.write(command);
   }
-  
+
   void connect() {
-    byte server[] = { 192, 168, 1, 18 };
+    byte server[] = { 
+      192, 168, 1, 18     };
     client.connect(server, 50000);
     delay(1000);
   }
-  
+
   bool connected() {
     return client.connected();
   }
-  
+
   String lastSwipedCard() {
     if (client.available()) {
-      String swipeData = "";
-      
-      int data = client.read(); // STX
-            
-      data = client.read(); // first byte
-      while(data != -1 && data != 255 && data != 13) {
-        char hexChar[3];
+      client.read(); // STX
 
-        itoa(data, hexChar, 16);
-        swipeData += hexChar;
-
-        data = client.read();
+      unsigned char dataBytes[8];
+      int i;
+      for(i = 0; i < 8; i++) { // 8 bytes representation of the card number
+        dataBytes[i] = client.read();
       }
+
+      unsigned long value = strtol(dataBytes, NULL, 16);
+
+      unsigned long int code = (value >> 1) & 0x7fff;
+      unsigned int facility = (value >> 17) & 0xff;
+
+      Serial.println("c: "+ code);
+      Serial.println("f: "+ facility);
+
+      // packet closing
       client.read(); // 0xa
       client.read(); // 0x3
 
-      return swipeData;
-    } else {
+      return string(code); 
+    } 
+    else {
       return "";
     }
   }
-  
-  private:
+
+private:
   EthernetClient client;  
 };
 //-----
@@ -189,12 +173,12 @@ class RfidReader {
 #define LATCH_OUTPUT_PIN 13
 
 class MagneticLatch {
-  public:
+public:
   MagneticLatch() {
     pinMode(LATCH_OUTPUT_PIN, OUTPUT);
     digitalWrite(LATCH_OUTPUT_PIN, LOW);
   }
-  
+
   void ping() {
     digitalWrite(LATCH_OUTPUT_PIN, HIGH);
     delay(3000);
@@ -209,47 +193,43 @@ Logger *logger;
 Authorizer *authorizer;
 MagneticLatch *latch;
 
-void setup()
-{
+void setup() {
   reader = new RfidReader();
   logger = new Logger();  
-  
-  String master = logger->readLines(MASTER_CARD_FILE)[0];
+
+  logger->debug("Initializing...");
+
   String * validCards = logger->readLines(VALID_CARDS_FILE);
-  authorizer = new Authorizer(master, validCards, logger);
+  authorizer = new Authorizer(validCards, logger);
+
   latch = new MagneticLatch();
-  
+
   logger->debug("connecting...");
 
   if (reader->connected()) {
     logger->debug("connected");
-  } else {
+  } 
+  else {
     logger->debug("connection failed");
   }
 }
 
-void loop()
-{
+void loop() {
   if(!reader->connected()) {
     logger->debug("Connection lost - reconnecting...");
     reader->connect();
   }
-  
+
   String c = reader->lastSwipedCard();
   if (c != "") {  
-    
-    if(authorizer->isMaster(c)) {
-      authorizer->recordMode();
-    } else {
-      authorizer->readerMode();
-    }
-    
+
+    logger->debug("Card: "+ c);
     if(authorizer->isAuthorized(c)) {
       latch->ping();
       logger->info("Opened: "+ c);
     } else {
       logger->debug("Unauthorized: "+ c);
     }
-
   }
 }
+
