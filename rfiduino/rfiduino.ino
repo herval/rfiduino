@@ -126,8 +126,7 @@ public:
   }
 
   void connect() {
-    byte server[] = { 
-      192, 168, 1, 18     };
+    byte server[] = { 192, 168, 1, 18 };
     client.connect(server, 50000);
     delay(1000);
   }
@@ -140,7 +139,7 @@ public:
     if (client.available()) {
       client.read(); // STX
 
-      unsigned char dataBytes[8];
+      char dataBytes[8];
       int i;
       for(i = 0; i < 8; i++) { // 8 bytes representation of the card number
         dataBytes[i] = client.read();
@@ -158,7 +157,7 @@ public:
       client.read(); // 0xa
       client.read(); // 0x3
 
-      return string(code); 
+      return String(code); 
     } 
     else {
       return "";
@@ -195,6 +194,7 @@ MagneticLatch *latch;
 
 void setup() {
   reader = new RfidReader();
+  
   logger = new Logger();  
 
   logger->debug("Initializing...");
@@ -219,7 +219,7 @@ void loop() {
     logger->debug("Connection lost - reconnecting...");
     reader->connect();
   }
-
+  
   String c = reader->lastSwipedCard();
   if (c != "") {  
 
