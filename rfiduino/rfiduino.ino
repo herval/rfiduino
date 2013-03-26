@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <SD.h>
 
-#define VALID_CARDS_FILE "cards.txt"
+#define VALID_CARDS_FILE "CARDS.TXT"
 
 #define LED_PIN 13
 
@@ -17,14 +17,18 @@
  ** CLK - pin 13
  ** CS - pin 4
  */
-#define SD_CARD_PIN 10
+#define SD_CARD_PIN_OUT 4
+#define SD_CARD_PIN_IN 10
 
 class Logger {
 public:
   Logger() {
-    pinMode(SD_CARD_PIN, OUTPUT);
-    Serial.begin(9600);
-    delay(1000);
+    pinMode(SD_CARD_PIN_OUT, OUTPUT);
+    pinMode(SD_CARD_PIN_IN, INPUT);
+    
+    if (!SD.begin(SD_CARD_PIN_OUT)) {
+      Serial.println("NO SD CARD DETECTED!");
+    }
   }
 
   void debug(String data) {
@@ -32,26 +36,19 @@ public:
     Serial.println("DEBUG: " + data);
   }
 
-  String * readLines(char * file) {
+  String readLines(char * file) {
     File dataFile = SD.open(file, FILE_READ);
-    // Serial.println("DEBUG: opened ");
-    String allLines[200];
 
     int line = 0;
+    String buffer = "";
 
-    int nextChar = dataFile.read();
-    String nextString = "";
-    while(nextChar != -1) {
-      if (nextChar == 13) {
-        allLines[line] = nextString;
-        line++;
-        nextString = "";
-      } 
-      nextString += nextChar;  
-      Serial.println("--- " + nextString);  
+    while(dataFile.available()) {
+      char nextChar = dataFile.read();
+      buffer += nextChar;
     }
-    Serial.println("DONE"); 
-    return allLines;
+    dataFile.close();
+
+    return buffer;
   }
 
   void info(String data) {
@@ -82,24 +79,17 @@ public:
  */
 
 class Authorizer {
-  String *authorizedCards;
+  String authorizedCards;
   Logger *logger;
 
-public:
-  Authorizer(String cards[], Logger *logTo) {
+  public:
+  Authorizer(String cards, Logger *logTo) {
     authorizedCards = cards;
     logger = logTo;
-
-    pinMode(SD_CARD_PIN, OUTPUT);
   }
 
   bool isAuthorized(String cardNumber) {
-    for(int i = 0; i < sizeof(authorizedCards); i++) {
-      if(authorizedCards[i] == cardNumber) {
-        return true;
-      }
-    }
-    return false;
+    return (authorizedCards.indexOf(cardNumber) > -1);
   }
 };
 
@@ -108,10 +98,8 @@ public:
 class RfidReader {
 public:
   RfidReader() {
-    byte mac[] = { 
-      0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED     };
-    byte ip[] = { 
-      192, 168, 1, 100     };
+    byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+    byte ip[] = { 192, 168, 1, 100 };
 
     Ethernet.begin(mac, ip);
     client = EthernetClient();
@@ -150,17 +138,16 @@ public:
       unsigned long int code = (value >> 1) & 0x7fff;
       unsigned int facility = (value >> 17) & 0xff;
 
-      Serial.println("c: "+ code);
-      Serial.println("f: "+ facility);
+//      Serial.println("c: "+ code);
+//      Serial.println("f: "+ facility);
 
       // packet closing
       client.read(); // 0xa
       client.read(); // 0x3
 
       return String(code); 
-    } 
-    else {
-      return "";
+    } else {
+      return "0000";
     }
   }
 
@@ -194,12 +181,13 @@ MagneticLatch *latch;
 
 void setup() {
   reader = new RfidReader();
+  Serial.begin(9600);
   
   logger = new Logger();  
 
   logger->debug("Initializing...");
 
-  String * validCards = logger->readLines(VALID_CARDS_FILE);
+  String validCards = logger->readLines(VALID_CARDS_FILE);
   authorizer = new Authorizer(validCards, logger);
 
   latch = new MagneticLatch();
@@ -215,14 +203,13 @@ void setup() {
 }
 
 void loop() {
-  if(!reader->connected()) {
+  while(!reader->connected()) {
     logger->debug("Connection lost - reconnecting...");
     reader->connect();
   }
   
   String c = reader->lastSwipedCard();
   if (c != "") {  
-
     logger->debug("Card: "+ c);
     if(authorizer->isAuthorized(c)) {
       latch->ping();
