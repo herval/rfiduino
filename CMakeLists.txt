@@ -1,3 +1,5 @@
+set(SERIAL_DEVICE "/dev/tty.usbmodem411")
+set(SERIAL_PORT "/dev/tty.usbmodem411")
 set(CMAKE_TOOLCHAIN_FILE $ENV{ARDUINO_TOOLCHAIN})
 
 cmake_minimum_required(VERSION 2.8)
